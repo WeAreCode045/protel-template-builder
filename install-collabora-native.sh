@@ -12,10 +12,17 @@ fi
 
 echo "1. Adding Collabora repository..."
 # Import GPG key
-curl -fsSL https://www.collaboraoffice.com/downloads/gpgkey/collaboraonline-release.key | gpg --dearmor -o /usr/share/keyrings/collaboraonline-release-keyring.gpg
+mkdir -p /etc/apt/keyrings
+cd /etc/apt/keyrings
+wget -O collaboraonline-release-keyring.gpg https://collaboraoffice.com/downloads/gpg/collaboraonline-release-keyring.gpg
 
-# Add repository for Ubuntu 24.04 (noble)
-echo "deb [signed-by=/usr/share/keyrings/collaboraonline-release-keyring.gpg] https://www.collaboraoffice.com/repos/CollaboraOnline/CODE-ubuntu2404 ./" > /etc/apt/sources.list.d/collaboraonline.list
+# Add repository (new format for Ubuntu 24.04)
+cat > /etc/apt/sources.list.d/collaboraonline.sources <<EOF
+Types: deb
+URIs: https://www.collaboraoffice.com/repos/CollaboraOnline/CODE-deb
+Suites: ./
+Signed-By: /etc/apt/keyrings/collaboraonline-release-keyring.gpg
+EOF
 
 echo ""
 echo "2. Updating package list..."
