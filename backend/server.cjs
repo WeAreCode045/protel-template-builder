@@ -118,9 +118,25 @@ app.get('/api/collabora/discovery', async (req, res) => {
     
     // Replace internal collabora URLs with the public-facing URL
     const publicUrl = `${req.protocol}://${req.get('host')}/collabora`;
-    const modifiedXml = discoveryXml
+    const hostOnly = req.get('host');
+    
+    // Replace all variations of Collabora URLs
+    let modifiedXml = discoveryXml
       .replace(/http:\/\/collabora:9980/g, publicUrl)
       .replace(/https:\/\/collabora:9980/g, publicUrl);
+    
+    // Also ensure urlsrc attributes use the full path with /collabora prefix
+    // This is critical for the editor iframe to load correctly
+    modifiedXml = modifiedXml.replace(
+      /urlsrc="http:\/\/([^"]+)"/g, 
+      (match, url) => {
+        // If it's already pointing to our domain, make sure /collabora is in the path
+        if (url.includes(hostOnly) && !url.includes('/collabora')) {
+          return `urlsrc="${req.protocol}://${hostOnly}/collabora${url.substring(url.indexOf('/', url.indexOf('://') + 3))}"`;
+        }
+        return match;
+      }
+    );
     
     // Return both the Collabora URL and the discovery XML
     res.json({ 
