@@ -58,20 +58,9 @@ const SplitView: React.FC<SplitViewProps> = ({ file }) => {
           throw new Error('Could not find ODT editor in Collabora discovery');
         }
 
-        // Extract path from editor URL (remove protocol and host if present)
-        let editorPath = editorUrl;
-        if (editorUrl.includes('://')) {
-          const url = new URL(editorUrl);
-          editorPath = url.pathname + url.search;
-          // Ensure it ends with ? if original URL had it
-          if (editorUrl.endsWith('?') && !editorPath.endsWith('?')) {
-            editorPath += '?';
-          }
-        }
-
-        // Build WOPI URL with relative path
+        // Build WOPI URL - use the full editor URL with query parameter
         const wopiSrc = encodeURIComponent(`${window.location.origin}/api/collabora/files/${uploadedFileId}`);
-        const fullUrl = `${editorPath}WOPISrc=${wopiSrc}`;
+        const fullUrl = `${editorUrl}WOPISrc=${wopiSrc}`;
         
         setCollaboraUrl(fullUrl);
         setLoading(false);
