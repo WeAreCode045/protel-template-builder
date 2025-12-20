@@ -22,30 +22,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Collabora Online
-  collabora:
-    image: collabora/code:latest
-    container_name: protel-collabora
-    restart: always
-    ports:
-      - "9980:9980"
-    environment:
-      - domain=${DOMAIN:-localhost}
-      - username=${COLLABORA_USER:-admin}
-      - password=${COLLABORA_PASS:-admin}
-      - extra_params=--o:ssl.enable=false --o:ssl.termination=true --o:welcome.enable=false --o:logging.level=warning --o:net.proto=all
-    cap_add:
-      - MKNOD
-    extra_hosts:
-      - "protel.code045.nl:host-gateway"
-    networks:
-      - protel-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9980/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
 
 
 volumes:
