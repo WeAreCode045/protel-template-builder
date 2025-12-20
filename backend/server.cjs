@@ -121,10 +121,10 @@ app.get('/api/collabora/discovery', async (req, res) => {
     const protocol = req.get('x-forwarded-proto') || req.protocol;
     const publicUrl = `${protocol}://${host}/collabora`;
     
-    // Simple replacement: all collabora:9980 URLs get replaced with public URL
+    // Replace localhost:9980 URLs (what Collabora returns) with public URL
     const modifiedXml = discoveryXml
-      .replace(/http:\/\/collabora:9980/g, publicUrl)
-      .replace(/https:\/\/collabora:9980/g, publicUrl);
+      .replace(/https?:\/\/localhost:9980/g, publicUrl)
+      .replace(/https?:\/\/collabora:9980/g, publicUrl);
     
     // Return both the Collabora URL and the discovery XML
     res.json({ 
