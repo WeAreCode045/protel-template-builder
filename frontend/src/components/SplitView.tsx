@@ -59,9 +59,15 @@ const SplitView: React.FC<SplitViewProps> = ({ file }) => {
         }
 
         // Extract path from editor URL (remove protocol and host if present)
-        const editorPath = editorUrl.includes('://') 
-          ? new URL(editorUrl).pathname + new URL(editorUrl).search
-          : editorUrl;
+        let editorPath = editorUrl;
+        if (editorUrl.includes('://')) {
+          const url = new URL(editorUrl);
+          editorPath = url.pathname + url.search;
+          // Ensure it ends with ? if original URL had it
+          if (editorUrl.endsWith('?') && !editorPath.endsWith('?')) {
+            editorPath += '?';
+          }
+        }
 
         // Build WOPI URL with relative path
         const wopiSrc = encodeURIComponent(`${window.location.origin}/api/collabora/files/${uploadedFileId}`);
