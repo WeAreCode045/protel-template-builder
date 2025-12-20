@@ -1,0 +1,41 @@
+# Development Docker Compose
+# For local development only
+
+version: '3.8'
+
+services:
+  collabora:
+    image: collabora/code:latest
+    container_name: protel-collabora-dev
+    ports:
+      - "9980:9980"
+    environment:
+      - domain=localhost
+      - username=admin
+      - password=admin
+      - extra_params=--o:ssl.enable=false --o:welcome.enable=false
+    cap_add:
+      - MKNOD
+    networks:
+      - protel-network
+
+  mongodb:
+    image: mongo:7
+    container_name: protel-mongodb-dev
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=admin
+      - MONGO_INITDB_DATABASE=protel
+    volumes:
+      - mongodb_dev_data:/data/db
+    networks:
+      - protel-network
+
+volumes:
+  mongodb_dev_data:
+
+networks:
+  protel-network:
+    driver: bridge

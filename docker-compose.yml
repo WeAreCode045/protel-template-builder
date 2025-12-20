@@ -1,42 +1,118 @@
 version: '3.8'
 
 services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7
+    container_name: protel-mongodb
+    restart: always
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER:-admin}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:-changeme}
+      - MONGO_INITDB_DATABASE=protel
+    volumes:
+      - mongodb_data:/data/db
+    ports:
+      - "27017:27017"
+    networks:
+      - protel-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Collabora Online
   collabora:
     image: collabora/code:latest
-    container_name: collabora-code
+    container_name: protel-collabora
+    restart: always
     ports:
       - "9980:9980"
     environment:
-      - domain=${FRONTEND_DOMAIN:-localhost}
-      - username=admin
-      - password=admin
-      - extra_params=--o:ssl.enable=false --o:ssl.termination=true
+      - domain=${DOMAIN:-localhost}
+      - username=${COLLABORA_USER:-admin}
+      - password=${COLLABORA_PASS:-admin}
+      - extra_params=--o:ssl.enable=false --o:ssl.termination=true --o:welcome.enable=false --o:logging.level=warning
     cap_add:
       - MKNOD
-    restart: unless-stopped
     networks:
       - protel-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9980/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
+  # Backend API
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: protel-backend
+    restart: always
     ports:
       - "3001:3001"
     environment:
-      - NODE_ENV=development
-      - COLLABORA_URL=http://collabora:9980
+      - NODE_ENV=production
       - PORT=3001
+      - COLLABORA_URL=http://collabora:9980
+      - BACKEND_URL=https://${DOMAIN}/api
+      - FRONTEND_URL=https://${DOMAIN}
+      - MONGO_URI=mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-changeme}@mongodb:27017/protel?authSource=admin
     volumes:
-      - ./backend:/app
-      - /app/node_modules
-      - ./uploads:/app/uploads
+      - ./backend/uploads:/app/uploads
     depends_on:
-      - collabora
-    restart: unless-stopped
+      mongodb:
+        condition: service_healthy
+      collabora:
+        condition: service_healthy
     networks:
       - protel-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=https://${DOMAIN}/api
+    container_name: protel-frontend
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - protel-network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: protel-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - backend
+      - collabora
+    networks:
+      - protel-network
+
+volumes:
+  mongodb_data:
+    driver: local
 
 networks:
   protel-network:
