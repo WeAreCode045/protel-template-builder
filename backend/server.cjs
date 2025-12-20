@@ -42,6 +42,11 @@ app.get('/api/collabora/files/:fileId', async (req, res) => {
     const stats = await fs.stat(filePath);
     const originalFilename = file.split('-').slice(2).join('-');
     
+    // Get origin from request headers
+    const protocol = req.get('x-forwarded-proto') || req.protocol;
+    const host = req.get('x-forwarded-host') || req.get('host');
+    const origin = `${protocol}://${host}`;
+    
     // Return WOPI CheckFileInfo response
     res.json({
       BaseFileName: originalFilename,
@@ -50,7 +55,7 @@ app.get('/api/collabora/files/:fileId', async (req, res) => {
       UserFriendlyName: 'User',
       UserCanWrite: true,
       UserCanNotWriteRelative: false,
-      PostMessageOrigin: 'http://localhost:3000',
+      PostMessageOrigin: origin,
       LastModifiedTime: new Date(stats.mtime).toISOString()
     });
   } catch (error) {
