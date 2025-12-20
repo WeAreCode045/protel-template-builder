@@ -106,7 +106,8 @@ app.get('/api/collabora/download/:fileId', async (req, res) => {
 
 app.get('/api/collabora/discovery', async (req, res) => {
   try {
-    const collaboraUrl = process.env.COLLABORA_URL || 'http://collabora:9980';
+    // Use localhost:9980 for native Collabora installation
+    const collaboraUrl = 'http://localhost:9980';
     const discoveryUrl = `${collaboraUrl}/hosting/discovery`;
     
     console.log('Fetching discovery from:', discoveryUrl);
@@ -120,15 +121,21 @@ app.get('/api/collabora/discovery', async (req, res) => {
     
     const discoveryXml = await response.text();
     
-    // Replace localhost:9980 URLs with relative /collabora URLs
-    // This allows Collabora's JavaScript to properly construct WebSocket URLs
+    // Detect the protocol and host from request headers (set by nginx)
+    const protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
+    const host = req.get('x-forwarded-host') || req.get('host') || 'localhost';
+    
+    console.log(`Replacing URLs with: ${protocol}://${host}`);
+    
+    // Replace all localhost:9980 URLs with the actual domain
+    // This is critical for Collabora's JavaScript to generate correct WebSocket URLs
     const modifiedXml = discoveryXml
-      .replace(/https?:\/\/localhost:9980/g, '/collabora')
-      .replace(/https?:\/\/collabora:9980/g, '/collabora');
+      .replace(/https?:\/\/localhost:9980/g, `${protocol}://${host}`)
+      .replace(/https?:\/\/collabora:9980/g, `${protocol}://${host}`);
     
     // Return both the Collabora URL and the discovery XML
     res.json({ 
-      collaboraUrl: '/collabora',
+      collaboraUrl: '',
       discoveryXml: modifiedXml 
     });
   } catch (error) {
