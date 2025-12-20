@@ -48,18 +48,27 @@ check_root() {
 check_ubuntu_version() {
     if [ -f /etc/os-release ]; then
         . /etc/os-release
+        OS_VERSION=$VERSION_ID
+        
         if [[ "$ID" != "ubuntu" ]]; then
             log_warning "This script is designed for Ubuntu. Your OS: $ID"
             read -p "Continue anyway? (y/n) " -n 1 -r
             echo
             [[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
         fi
+        
         log_info "Detected: $PRETTY_NAME"
         
         # Check if Desktop version
         if command -v gnome-shell &> /dev/null || command -v unity &> /dev/null; then
             log_warning "Ubuntu Desktop detected - this uses more resources than Server edition"
             log_info "Consider disabling GUI after setup to save ~1GB RAM"
+        fi
+        
+        # For Ubuntu 24.04, install python3-distutils
+        if [[ "$OS_VERSION" == "24.04" ]]; then
+            log_info "Ubuntu 24.04 detected - installing additional Python packages..."
+            apt-get install -y python3-distutils python3-setuptools python3-pip || true
         fi
     fi
 }
@@ -83,7 +92,7 @@ install_docker_compose() {
         log_info "Docker Compose already installed"
     else
         log_info "Installing Docker Compose..."
-        apt-get install -y docker-compose
+        apt-get install -y docker-compose-plugin docker-compose
         log_info "Docker Compose installed successfully"
     fi
 }
@@ -103,18 +112,17 @@ setup_environment() {
         cp .env.example .env
         
         # Generate random passwords
-        MONGO_PASS=$(openssl rand -base64 32)
-        COLLABORA_PASS=$(openssl rand -base64 32)
+        MONGO_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+        COLLABORA_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
         JWT_SECRET=$(openssl rand -base64 64)
         
         # Update .env with generated passwords
-        sed -i "s/ChangeThisMongoPassword123!/$MONGO_PASS/" .env
-        sed -i "s/ChangeThisSecurePassword123!/$COLLABORA_PASS/" .env
-        sed -i "s/your-super-secret-jwt-key-change-this/$JWT_SECRET/" .env
+        sed -i "s/MongoDBPass001!/$MONGO_PASS/" .env
+        sed -i "s/CodePass001!/$COLLABORA_PASS/" .env
+        sed -i "s/K7h9mP3nQ2rS5tU6vW8xY0zA1bC3dE4fF5gG6hH7iI8jJ9kK0lL1mM2nN3oO4pP5qQ6rR7sS8tT9uU0vV1wW2xX3yY4zZ5==/$JWT_SECRET/" .env
         
         log_warning "Please edit .env file and set your DOMAIN before continuing!"
-        log_warning "Press ENTER after editing .env file..."
-        read -r
+        nano .env
     else
         log_info ".env file already exists"
     fi
@@ -124,105 +132,117 @@ setup_environment() {
     
     # Validate DOMAIN is set
     if [ -z "$DOMAIN" ] || [ "$DOMAIN" = "yourdomain.com" ]; then
-        log_error "Please set your DOMAIN in .env file!"
+        log_error "Please set your actual DOMAIN in .env file!"
         exit 1
     fi
-    
-    # Replace ${DOMAIN} in nginx config
-    log_info "Configuring nginx for domain: $DOMAIN"
-    sed -i "s/\${DOMAIN}/$DOMAIN/g" nginx/conf.d/default.conf
     
     log_info "Domain configured: $DOMAIN"
 }
 
+install_nginx() {
+    if command -v nginx &> /dev/null; then
+        log_info "Nginx already installed"
+    else
+        log_info "Installing Nginx..."
+        apt-get install -y nginx
+        systemctl enable nginx
+        log_info "Nginx installed successfully"
+    fi
+}
+
+configure_nginx() {
+    log_info "Configuring Nginx..."
+    
+    # Load domain from .env
+    source .env
+    
+    # Backup existing config
+    if [ -f /etc/nginx/sites-available/protel ]; then
+        cp /etc/nginx/sites-available/protel /etc/nginx/sites-available/protel.backup
+    fi
+    
+    # Replace ${DOMAIN} placeholder in nginx config
+    cp nginx/conf.d/default.conf /tmp/nginx-protel.conf
+    sed -i "s/\${DOMAIN}/$DOMAIN/g" /tmp/nginx-protel.conf
+    
+    # Copy nginx configuration
+    cp /tmp/nginx-protel.conf /etc/nginx/sites-available/protel
+    
+    # Remove default site and enable protel site
+    rm -f /etc/nginx/sites-enabled/default
+    ln -sf /etc/nginx/sites-available/protel /etc/nginx/sites-enabled/protel
+    
+    # Test nginx configuration
+    if nginx -t; then
+        log_info "Nginx configuration valid"
+        systemctl reload nginx
+    else
+        log_error "Nginx configuration invalid!"
+        exit 1
+    fi
+}
+
 install_certbot() {
     log_info "Installing Certbot for SSL certificates..."
-    apt-get install -y certbot python3-certbot-nginx
+    
+    # For Ubuntu 24.04, use snap
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        if [[ "$VERSION_ID" == "24.04" ]]; then
+            log_info "Using snap to install Certbot for Ubuntu 24.04..."
+            apt-get install -y snapd
+            snap install core
+            snap refresh core
+            snap install --classic certbot
+            ln -sf /snap/bin/certbot /usr/bin/certbot
+        else
+            # For Ubuntu 22.04 and earlier
+            apt-get install -y certbot python3-certbot-nginx
+        fi
+    fi
+    
+    log_info "Certbot installed successfully"
 }
 
 setup_ssl() {
-    read -p "Do you want to set up SSL certificates now? (y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        log_info "Setting up SSL certificates..."
-        
-        # Load domain from .env
-        source .env
-        
-        if [ -z "$DOMAIN" ] || [ "$DOMAIN" = "yourdomain.com" ]; then
-            log_error "Please set your DOMAIN in .env file first!"
-            exit 1
-        fi
-        
-        log_info "Obtaining SSL certificate for: $DOMAIN and www.$DOMAIN"
-        
-        certbot certonly --standalone --agree-tos --preferred-challenges http \
-            -d $DOMAIN \
-            -d www.$DOMAIN
-        
-        # Copy certificates to nginx/ssl directory
-        mkdir -p nginx/ssl
-        cp /etc/letsencrypt/live/$DOMAIN/fullchain.pem nginx/ssl/
-        cp /etc/letsencrypt/live/$DOMAIN/privkey.pem nginx/ssl/
-        
-        # Update nginx config for SSL (add SSL server block)
-        log_info "Updating Nginx configuration for SSL..."
-        cat >> nginx/conf.d/default.conf <<EOF
-
-# SSL Configuration
-server {
-    listen 443 ssl http2;
-    server_name $DOMAIN www.$DOMAIN;
-
-    ssl_certificate /etc/nginx/ssl/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-
-    client_max_body_size 100M;
-
-    # Same locations as HTTP server
-    location /api {
-        proxy_pass http://backend:3001;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_http_version 1.1;
-        proxy_read_timeout 300s;
-    }
-
-    location /collabora/ {
-        rewrite ^/collabora/(.*)$ /\$1 break;
-        proxy_pass http://collabora:9980;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    location / {
-        proxy_pass http://frontend:80;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-
-# Redirect HTTP to HTTPS
-server {
-    listen 80;
-    server_name $DOMAIN www.$DOMAIN;
-    return 301 https://\$server_name\$request_uri;
-}
-EOF
-        
-        log_info "SSL certificates installed successfully"
-    else
-        log_info "Skipping SSL setup"
+    # Load domain from .env
+    source .env
+    
+    if [ -z "$DOMAIN" ] || [ "$DOMAIN" = "yourdomain.com" ] || [ "$DOMAIN" = "protel.code045.com" ]; then
+        log_error "Please set your DOMAIN in .env file first!"
+        return 1
     fi
+    
+    log_info "Setting up SSL certificates for: $DOMAIN and www.$DOMAIN"
+    log_warning "Make sure your DNS is pointing to this server!"
+    
+    read -p "Continue with SSL setup? (y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log_info "Skipping SSL setup"
+        return 0
+    fi
+    
+    # Use nginx plugin (doesn't need to stop nginx)
+    log_info "Requesting SSL certificate..."
+    certbot --nginx -d $DOMAIN -d www.$DOMAIN \
+        --non-interactive \
+        --agree-tos \
+        --email admin@$DOMAIN \
+        --redirect || {
+            log_error "SSL certificate request failed!"
+            log_warning "Common reasons:"
+            log_warning "  1. DNS not configured or not propagated yet"
+            log_warning "  2. Domain not pointing to this server"
+            log_warning "  3. Port 80/443 blocked by firewall"
+            log_info "You can run this later with: certbot --nginx -d $DOMAIN -d www.$DOMAIN"
+            return 1
+        }
+    
+    log_info "SSL certificates installed successfully!"
+    log_info "Auto-renewal is configured"
+    
+    return 0
 }
 
 start_services() {
@@ -232,7 +252,7 @@ start_services() {
     docker-compose up -d --build
     
     log_info "Waiting for services to be healthy..."
-    sleep 10
+    sleep 15
     
     # Check service health
     if docker-compose ps | grep -q "Up"; then
@@ -257,33 +277,45 @@ show_status() {
     
     echo ""
     log_info "Access your application:"
-    if [ ! -z "$DOMAIN" ] && [ "$DOMAIN" != "yourdomain.com" ]; then
+    
+    # Check if SSL is configured
+    if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
         log_info "  Application: https://$DOMAIN"
         log_info "  Backend API: https://$DOMAIN/api"
         log_info "  Collabora:   https://$DOMAIN/collabora"
     else
-        log_info "  Application: http://$(hostname -I | awk '{print $1}')"
-        log_info "  Backend API: http://$(hostname -I | awk '{print $1}')/api"
-        log_info "  Collabora:   http://$(hostname -I | awk '{print $1}')/collabora"
+        log_info "  Application: http://$DOMAIN"
+        log_info "  Backend API: http://$DOMAIN/api"
+        log_info "  Collabora:   http://$DOMAIN/collabora"
+        echo ""
+        log_warning "SSL not configured. You can set it up with:"
+        log_warning "  certbot --nginx -d $DOMAIN -d www.$DOMAIN"
     fi
     
     echo ""
     log_info "Useful commands:"
     log_info "  View logs:      docker-compose logs -f"
+    log_info "  View specific:  docker-compose logs -f backend"
     log_info "  Restart:        docker-compose restart"
     log_info "  Stop:           docker-compose down"
     log_info "  Update app:     git pull && docker-compose up -d --build"
     
     echo ""
-    log_warning "IMPORTANT: Save these credentials!"
-    log_warning "MongoDB Password: $(grep MONGO_PASSWORD .env | cut -d'=' -f2)"
-    log_warning "Collabora Password: $(grep COLLABORA_PASS .env | cut -d'=' -f2)"
+    log_info "Credentials saved in .env file"
+    log_info "  MongoDB User:     $MONGO_USER"
+    log_info "  Collabora User:   $COLLABORA_USER"
     echo ""
+    
+    log_info "System resources:"
+    free -h | grep Mem
+    echo ""
+    docker stats --no-stream
 }
 
 # Main installation flow
 main() {
     log_info "Starting ProTel Template Builder deployment..."
+    echo ""
     
     check_root
     check_ubuntu_version
@@ -291,28 +323,35 @@ main() {
     log_info "Updating system packages..."
     apt-get update && apt-get upgrade -y
     
+    log_info "Installing system tools..."
+    apt-get install -y git curl wget ufw openssl nano
+    
     install_docker
     install_docker_compose
-    
-    log_info "Installing additional tools..."
-    apt-get install -y git curl wget ufw openssl
-    
     configure_firewall
+    install_nginx
+    
     setup_environment
     
-    # Optional SSL setup
+    # Start Docker services first (before nginx configuration)
+    start_services
+    
+    # Configure Nginx to proxy to Docker containers
+    configure_nginx
+    
+    # Optional SSL setup (uses nginx plugin, no port conflict)
     install_certbot
     
-    # Ask if user wants SSL now or later
-    read -p "Set up SSL certificates now? (Requires DNS to be configured) (y/n) " -n 1 -r
+    echo ""
+    read -p "Set up SSL certificates now? (DNS must be configured) (y/n) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         setup_ssl
     else
-        log_info "You can set up SSL later with: certbot --nginx"
+        log_info "Skipping SSL setup. You can configure it later with:"
+        log_info "  certbot --nginx -d yourdomain.com -d www.yourdomain.com"
     fi
     
-    start_services
     show_status
     
     log_info "Deployment completed successfully! 🎉"
