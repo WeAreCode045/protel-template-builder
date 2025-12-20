@@ -11,10 +11,11 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 echo "1. Adding Collabora repository..."
-cd /usr/share/keyrings
-wget https://collaboraoffice.com/repos/CollaboraOnline/CODE-ubuntu2204/Release.key -O collaboraonline-release-keyring.gpg
+# Import GPG key
+curl -fsSL https://www.collaboraoffice.com/downloads/gpgkey/collaboraonline-release.key | gpg --dearmor -o /usr/share/keyrings/collaboraonline-release-keyring.gpg
 
-echo "deb [signed-by=/usr/share/keyrings/collaboraonline-release-keyring.gpg] https://collaboraoffice.com/repos/CollaboraOnline/CODE-ubuntu2204 ./" > /etc/apt/sources.list.d/collaboraonline.list
+# Add repository for Ubuntu 24.04 (noble)
+echo "deb [signed-by=/usr/share/keyrings/collaboraonline-release-keyring.gpg] https://www.collaboraoffice.com/repos/CollaboraOnline/CODE-ubuntu2404 ./" > /etc/apt/sources.list.d/collaboraonline.list
 
 echo ""
 echo "2. Updating package list..."
