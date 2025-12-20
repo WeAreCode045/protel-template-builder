@@ -117,7 +117,10 @@ app.get('/api/collabora/discovery', async (req, res) => {
     const discoveryXml = await response.text();
     
     // Replace all Collabora internal URLs with public-facing URLs
-    const publicUrl = `${req.protocol}://${req.get('host')}/collabora`;
+    // Prefer X-Forwarded-Host header from nginx proxy, fallback to Host header
+    const host = req.get('x-forwarded-host') || req.get('host');
+    const protocol = req.get('x-forwarded-proto') || req.protocol;
+    const publicUrl = `${protocol}://${host}/collabora`;
     
     // Simple replacement: all collabora:9980 URLs get replaced with public URL
     const modifiedXml = discoveryXml
