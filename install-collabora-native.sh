@@ -40,6 +40,11 @@ coolconfig set ssl.termination true
 coolconfig set storage.wopi.host protel.code045.nl
 coolconfig set net.proto all
 
+# Configure aliasgroups for reverse proxy
+# This tells Collabora that it's behind /collabora path
+coolconfig set-alias-groups 'groups[0].host=protel.code045.nl:443' \
+    'groups[0].aliases[0]=https://protel.code045.nl/collabora'
+
 echo ""
 echo "5. Starting Collabora service..."
 systemctl enable coolwsd
