@@ -3,6 +3,8 @@
 #############################################
 # ProTel Template Builder - VPS Deploy Script
 # 
+# Supports: Ubuntu 22.04 LTS and 24.04 LTS (Server or Desktop)
+#
 # This script automatically installs and configures:
 # - Docker & Docker Compose
 # - MongoDB
@@ -40,6 +42,25 @@ check_root() {
     if [ "$EUID" -ne 0 ]; then 
         log_error "Please run as root (use sudo)"
         exit 1
+    fi
+}
+
+check_ubuntu_version() {
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        if [[ "$ID" != "ubuntu" ]]; then
+            log_warning "This script is designed for Ubuntu. Your OS: $ID"
+            read -p "Continue anyway? (y/n) " -n 1 -r
+            echo
+            [[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
+        fi
+        log_info "Detected: $PRETTY_NAME"
+        
+        # Check if Desktop version
+        if command -v gnome-shell &> /dev/null || command -v unity &> /dev/null; then
+            log_warning "Ubuntu Desktop detected - this uses more resources than Server edition"
+            log_info "Consider disabling GUI after setup to save ~1GB RAM"
+        fi
     fi
 }
 
@@ -265,6 +286,7 @@ main() {
     log_info "Starting ProTel Template Builder deployment..."
     
     check_root
+    check_ubuntu_version
     
     log_info "Updating system packages..."
     apt-get update && apt-get upgrade -y
