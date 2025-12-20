@@ -1,0 +1,145 @@
+import React, { useState, useEffect } from 'react';
+import { Clock, RotateCcw, X } from 'lucide-react';
+import { versionService } from '../services/apiService';
+import { formatDistanceToNow } from 'date-fns';
+import toast from 'react-hot-toast';
+
+interface VersionHistoryProps {
+  documentId: string;
+  onClose: () => void;
+  onRestore: (content: string) => void;
+}
+
+const VersionHistory: React.FC<VersionHistoryProps> = ({ documentId, onClose, onRestore }) => {
+  const [versions, setVersions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedVersion, setSelectedVersion] = useState<any>(null);
+
+  useEffect(() => {
+    loadVersions();
+  }, [documentId]);
+
+  const loadVersions = async () => {
+    try {
+      const data = await versionService.getHistory(documentId);
+      setVersions(data.versions);
+    } catch (error) {
+      toast.error('Failed to load version history');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewVersion = async (versionNumber: number) => {
+    try {
+      const data = await versionService.getVersion(documentId, versionNumber);
+      setSelectedVersion(data. version);
+    } catch (error) {
+      toast.error('Failed to load version');
+    }
+  };
+
+  const handleRestore = async (versionNumber: number) => {
+    if (!confirm(`Restore version ${versionNumber}?  This will create a new version. `)) {
+      return;
+    }
+
+    try {
+      const data = await versionService.restore(documentId, versionNumber);
+      toast.success('Version restored successfully');
+      onRestore(data. document.content);
+      loadVersions();
+      setSelectedVersion(null);
+    } catch (error) {
+      toast.error('Failed to restore version');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <div className="p-4 border-b flex items-center justify-between">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Clock className="w-5 h-5" />
+            Version History
+          </h3>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 flex overflow-hidden">
+          {/* Version List */}
+          <div className="w-1/3 border-r overflow-y-auto">
+            {loading ? (
+              <div className="p-4 text-center text-gray-500">Loading versions...</div>
+            ) : (
+              <div className="divide-y">
+                {versions.map((version) => (
+                  <div
+                    key={version._id}
+                    onClick={() => handleViewVersion(version.versionNumber)}
+                    className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
+                      selectedVersion?. versionNumber === version.versionNumber ? 'bg-blue-50' : ''
+                    }`}
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <span className="font-medium">Version {version.versionNumber}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRestore(version.versionNumber);
+                        }}
+                        className="p-1 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                        title="Restore this version"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-1">
+                      {version.changeDescription || 'No description'}
+                    </p>
+                    <div className="text-xs text-gray-500">
+                      <p>By {version.changedBy?. name || 'Unknown'}</p>
+                      <p>{formatDistanceToNow(new Date(version.createdAt), { addSuffix: true })}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Version Content Preview */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {selectedVersion ?  (
+              <div>
+                <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                  <h4 className="font-medium mb-2">Version {selectedVersion.versionNumber}</h4>
+                  <p className="text-sm text-gray-600">{selectedVersion.changeDescription}</p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    By {selectedVersion.changedBy?.name} • {' '}
+                    {formatDistanceToNow(new Date(selectedVersion.createdAt), { addSuffix: true })}
+                  </p>
+                </div>
+                <div className="prose max-w-none">
+                  <pre className="whitespace-pre-wrap font-mono text-sm bg-gray-50 p-4 rounded-lg">
+                    {selectedVersion.content}
+                  </pre>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full text-gray-500">
+                Select a version to view its content
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default VersionHistory;

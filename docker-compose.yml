@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  collabora:
+    image: collabora/code:latest
+    container_name: collabora-code
+    ports:
+      - "9980:9980"
+    environment:
+      - domain=${FRONTEND_DOMAIN:-localhost}
+      - username=admin
+      - password=admin
+      - extra_params=--o:ssl.enable=false --o:ssl.termination=true
+    cap_add:
+      - MKNOD
+    restart: unless-stopped
+    networks:
+      - protel-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: protel-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - COLLABORA_URL=http://collabora:9980
+      - PORT=3001
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - ./uploads:/app/uploads
+    depends_on:
+      - collabora
+    restart: unless-stopped
+    networks:
+      - protel-network
+
+networks:
+  protel-network:
+    driver: bridge

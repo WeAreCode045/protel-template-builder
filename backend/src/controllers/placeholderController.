@@ -1,0 +1,125 @@
+import { Response } from 'express';
+import { AuthRequest } from '../middleware/auth. js';
+import { Placeholder } from '../models/Placeholder.js';
+
+export const placeholderController = {
+  // Get all placeholders (grouped by category)
+  async getAllPlaceholders(req: AuthRequest, res: Response) {
+    try {
+      const placeholders = await Placeholder.find()
+        .select('-__v')
+        .sort({ category: 1, key: 1 });
+
+      // Group by category
+      const grouped = placeholders.reduce((acc, placeholder) => {
+        if (!acc[placeholder.category]) {
+          acc[placeholder.category] = [];
+        }
+        acc[placeholder.category].push({
+          id: placeholder._id,
+          key: placeholder.key,
+          demoValue: placeholder.demoValue,
+          description: placeholder.description,
+          type: placeholder.type
+        });
+        return acc;
+      }, {} as Record<string, any[]>);
+
+      res.json({ placeholders: grouped });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch placeholders' });
+    }
+  },
+
+  // Get placeholder data for preview (just key-value pairs)
+  async getPlaceholderData(req: AuthRequest, res: Response) {
+    try {
+      const placeholders = await Placeholder.find().select('key demoValue');
+
+      const data = placeholders.reduce((acc, placeholder) => {
+        const keys = placeholder.key.split('.');
+        let current = acc;
+        
+        keys.forEach((key, index) => {
+          if (index === keys.length - 1) {
+            current[key] = placeholder.demoValue;
+          } else {
+            current[key] = current[key] || {};
+            current = current[key];
+          }
+        });
+        
+        return acc;
+      }, {} as Record<string, any>);
+
+      res.json(data);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch placeholder data' });
+    }
+  },
+
+  // Create new placeholder (admin only)
+  async createPlaceholder(req: AuthRequest, res: Response) {
+    try {
+      const { key, category, demoValue, description, type } = req.body;
+
+      const existingPlaceholder = await Placeholder.findOne({ key });
+      if (existingPlaceholder) {
+        return res.status(400).json({ error: 'Placeholder key already exists' });
+      }
+
+      const placeholder = new Placeholder({
+        key,
+        category,
+        demoValue,
+        description,
+        type,
+        createdBy: req. user! . id
+      });
+
+      await placeholder.save();
+      res.status(201).json({ placeholder });
+    } catch (error:  any) {
+      res.status(500).json({ error: error.message || 'Failed to create placeholder' });
+    }
+  },
+
+  // Update placeholder (admin only)
+  async updatePlaceholder(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const { demoValue, description, type } = req.body;
+
+      const placeholder = await Placeholder. findByIdAndUpdate(
+        id,
+        { demoValue, description, type },
+        { new:  true, runValidators: true }
+      );
+
+      if (!placeholder) {
+        return res.status(404).json({ error: 'Placeholder not found' });
+      }
+
+      res.json({ placeholder });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to update placeholder' });
+    }
+  },
+
+  // Delete placeholder (admin only)
+  async deletePlaceholder(req:  AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+
+      const placeholder = await Placeholder. findByIdAndDelete(id);
+
+      if (!placeholder) {
+        return res.status(404).json({ error: 'Placeholder not found' });
+      }
+
+      res.json({ message: 'Placeholder deleted successfully' });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to delete placeholder' });
+    }
+  }
+};
