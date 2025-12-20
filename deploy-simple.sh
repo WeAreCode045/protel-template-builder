@@ -21,12 +21,15 @@ docker-compose up -d
 echo ""
 echo "3. Building frontend..."
 cd frontend
-npm install --production
+# Clean install to avoid rollup optional dependency bug
+rm -rf node_modules package-lock.json
+npm install
 npm run build
 
 echo ""
 echo "4. Installing backend dependencies..."
 cd ../backend
+rm -rf node_modules package-lock.json
 npm install --production
 
 echo ""
