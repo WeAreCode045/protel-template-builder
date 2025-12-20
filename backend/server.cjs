@@ -120,20 +120,15 @@ app.get('/api/collabora/discovery', async (req, res) => {
     
     const discoveryXml = await response.text();
     
-    // Replace all Collabora internal URLs with public-facing URLs
-    // Prefer X-Forwarded-Host header from nginx proxy, fallback to Host header
-    const host = req.get('x-forwarded-host') || req.get('host');
-    const protocol = req.get('x-forwarded-proto') || req.protocol;
-    const publicUrl = `${protocol}://${host}/collabora`;
-    
-    // Replace localhost:9980 URLs (what Collabora returns) with public URL
+    // Replace localhost:9980 URLs with relative /collabora URLs
+    // This allows Collabora's JavaScript to properly construct WebSocket URLs
     const modifiedXml = discoveryXml
-      .replace(/https?:\/\/localhost:9980/g, publicUrl)
-      .replace(/https?:\/\/collabora:9980/g, publicUrl);
+      .replace(/https?:\/\/localhost:9980/g, '/collabora')
+      .replace(/https?:\/\/collabora:9980/g, '/collabora');
     
     // Return both the Collabora URL and the discovery XML
     res.json({ 
-      collaboraUrl: publicUrl,
+      collaboraUrl: '/collabora',
       discoveryXml: modifiedXml 
     });
   } catch (error) {
