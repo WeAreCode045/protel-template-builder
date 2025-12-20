@@ -101,7 +101,7 @@ app.get('/api/collabora/download/:fileId', async (req, res) => {
 
 app.get('/api/collabora/discovery', async (req, res) => {
   try {
-    const collaboraUrl = 'http://localhost:9980';
+    const collaboraUrl = process.env.COLLABORA_URL || 'http://collabora:9980';
     const discoveryUrl = `${collaboraUrl}/hosting/discovery`;
     
     console.log('Fetching discovery from:', discoveryUrl);
@@ -116,12 +116,15 @@ app.get('/api/collabora/discovery', async (req, res) => {
     
     const discoveryXml = await response.text();
     
-    // Replace https with http in the discovery XML since we're not using SSL
-    const modifiedXml = discoveryXml.replace(/https:\/\/localhost:9980/g, 'http://localhost:9980');
+    // Replace internal collabora URLs with the public-facing URL
+    const publicUrl = `${req.protocol}://${req.get('host')}/collabora`;
+    const modifiedXml = discoveryXml
+      .replace(/http:\/\/collabora:9980/g, publicUrl)
+      .replace(/https:\/\/collabora:9980/g, publicUrl);
     
     // Return both the Collabora URL and the discovery XML
     res.json({ 
-      collaboraUrl,
+      collaboraUrl: publicUrl,
       discoveryXml: modifiedXml 
     });
   } catch (error) {
