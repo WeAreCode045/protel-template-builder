@@ -33,10 +33,7 @@ services:
       - domain=${DOMAIN:-localhost}
       - username=${COLLABORA_USER:-admin}
       - password=${COLLABORA_PASS:-admin}
-      - extra_params=--o:ssl.enable=false --o:ssl.termination=true --o:welcome.enable=false --o:logging.level=warning --o:net.frame_ancestors=${DOMAIN:-localhost}
-      - aliasgroups=
-    extra_hosts:
-      - "protel.code045.nl:host-gateway"
+      - extra_params=--o:ssl.enable=false --o:ssl.termination=true --o:welcome.enable=false --o:logging.level=warning
     cap_add:
       - MKNOD
     networks:
