@@ -189,3 +189,68 @@ const PlaceholderManager: React. FC = () => {
                 <Save className="w-4 h-4" />
                 {editing ? 'Update' : 'Create'}
               </button>
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                <X className="w-4 h-4" />
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Key</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Demo Value</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {placeholders.map((placeholder) => (
+              <tr key={placeholder.id}>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <code className="text-sm font-mono text-blue-600">${placeholder.key}</code>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{placeholder.category}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{placeholder.demoValue}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{placeholder.type}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleEdit(placeholder)}
+                      className="text-blue-600 hover:text-blue-900"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(placeholder.id)}
+                      className="text-red-600 hover:text-red-900"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {placeholders.length === 0 && (
+          <div className="p-8 text-center text-gray-500">
+            <p>No placeholders yet. Click "Add Placeholder" to create one.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default PlaceholderManager;
