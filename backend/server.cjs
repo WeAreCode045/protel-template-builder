@@ -106,8 +106,7 @@ app.get('/api/collabora/discovery', async (req, res) => {
     
     console.log('Fetching discovery from:', discoveryUrl);
     
-    // Fetch discovery XML from Collabora
-    const fetch = (await import('node-fetch')).default;
+    // Fetch discovery XML from Collabora (using native fetch in Node 18+)
     const response = await fetch(discoveryUrl);
     
     if (!response.ok) {
