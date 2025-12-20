@@ -57,19 +57,29 @@ check_ubuntu_version() {
             [[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
         fi
         
-        log_info "Detected: $PRETTY_NAME"
+        log_info "Detected: $PRETTY_NAME (version $OS_VERSION)"
         
         # Check if Desktop version
         if command -v gnome-shell &> /dev/null || command -v unity &> /dev/null; then
             log_warning "Ubuntu Desktop detected - this uses more resources than Server edition"
             log_info "Consider disabling GUI after setup to save ~1GB RAM"
         fi
-        
-        # For Ubuntu 24.04, install python3-distutils
-        if [[ "$OS_VERSION" == "24.04" ]]; then
-            log_info "Ubuntu 24.04 detected - installing additional Python packages..."
-            apt-get install -y python3-distutils python3-setuptools python3-pip || true
-        fi
+    fi
+}
+
+install_python_packages() {
+    log_info "Installing Python packages..."
+    
+    # Get Ubuntu version
+    . /etc/os-release
+    
+    if [[ "$VERSION_ID" == "24.04" ]]; then
+        log_info "Ubuntu 24.04 detected - Python 3.12 requires special handling"
+        # Python 3.12 removed distutils, we need to use alternative
+        apt-get install -y python3 python3-pip python3-venv python3-dev
+    else
+        # Ubuntu 22.04 and earlier
+        apt-get install -y python3 python3-pip python3-distutils python3-setuptools python3-dev
     fi
 }
 
@@ -131,7 +141,7 @@ setup_environment() {
     source .env
     
     # Validate DOMAIN is set
-    if [ -z "$DOMAIN" ] || [ "$DOMAIN" = "yourdomain.com" ]; then
+    if [ -z "$DOMAIN" ] || [ "$DOMAIN" = "yourdomain.com" ] || [ "$DOMAIN" = "protel.code045.com" ]; then
         log_error "Please set your actual DOMAIN in .env file!"
         exit 1
     fi
@@ -185,37 +195,68 @@ configure_nginx() {
 install_certbot() {
     log_info "Installing Certbot for SSL certificates..."
     
-    # For Ubuntu 24.04, use snap
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        if [[ "$VERSION_ID" == "24.04" ]]; then
-            log_info "Using snap to install Certbot for Ubuntu 24.04..."
-            apt-get install -y snapd
-            snap install core
-            snap refresh core
-            snap install --classic certbot
-            ln -sf /snap/bin/certbot /usr/bin/certbot
-        else
-            # For Ubuntu 22.04 and earlier
-            apt-get install -y certbot python3-certbot-nginx
-        fi
-    fi
+    # Get Ubuntu version
+    . /etc/os-release
     
-    log_info "Certbot installed successfully"
+    if [[ "$VERSION_ID" == "24.04" ]]; then
+        log_info "Using snap to install Certbot for Ubuntu 24.04..."
+        # Remove any existing certbot packages
+        apt-get remove -y certbot python3-certbot-nginx 2>/dev/null || true
+        
+        # Install snapd if not present
+        if ! command -v snap &> /dev/null; then
+            apt-get install -y snapd
+            systemctl enable --now snapd.socket
+            sleep 5
+        fi
+        
+        # Install certbot via snap
+        snap install core 2>/dev/null || snap refresh core
+        snap install --classic certbot
+        
+        # Create symlink
+        ln -sf /snap/bin/certbot /usr/bin/certbot
+        
+        log_info "Certbot installed via snap"
+    else
+        # For Ubuntu 22.04 and earlier
+        log_info "Installing Certbot via apt for Ubuntu $VERSION_ID..."
+        apt-get install -y certbot python3-certbot-nginx
+        log_info "Certbot installed via apt"
+    fi
 }
 
 setup_ssl() {
     # Load domain from .env
     source .env
     
-    if [ -z "$DOMAIN" ] || [ "$DOMAIN" = "yourdomain.com" ] || [ "$DOMAIN" = "protel.code045.com" ]; then
-        log_error "Please set your DOMAIN in .env file first!"
+    if [ -z "$DOMAIN" ] || [ "$DOMAIN" = "yourdomain.com" ] || [ "$DOMAIN" = "protel.code045.com" ] || [ "$DOMAIN" = "protel.code045.nl" ]; then
+        log_error "Please set your actual DOMAIN in .env file first!"
         return 1
     fi
     
     log_info "Setting up SSL certificates for: $DOMAIN and www.$DOMAIN"
     log_warning "Make sure your DNS is pointing to this server!"
+    echo ""
+    log_info "Checking DNS..."
     
+    # Check if domain resolves
+    DOMAIN_IP=$(dig +short $DOMAIN | tail -n1)
+    SERVER_IP=$(curl -s ifconfig.me)
+    
+    if [ -n "$DOMAIN_IP" ]; then
+        log_info "Domain $DOMAIN resolves to: $DOMAIN_IP"
+        log_info "This server IP: $SERVER_IP"
+        
+        if [ "$DOMAIN_IP" != "$SERVER_IP" ]; then
+            log_warning "Domain does not point to this server yet!"
+            log_warning "Please update your DNS and wait for propagation"
+        fi
+    else
+        log_warning "Could not resolve domain $DOMAIN"
+    fi
+    
+    echo ""
     read -p "Continue with SSL setup? (y/n) " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -324,7 +365,10 @@ main() {
     apt-get update && apt-get upgrade -y
     
     log_info "Installing system tools..."
-    apt-get install -y git curl wget ufw openssl nano
+    apt-get install -y git curl wget ufw openssl nano dnsutils
+    
+    # Install Python packages first (before Certbot)
+    install_python_packages
     
     install_docker
     install_docker_compose
